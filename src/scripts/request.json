@@ -1,0 +1,7 @@
+{
+  "node_run_id": "node_run_demo",
+  "run_id": "run_demo",
+  "node_type_ref": { "node_type_id": "atomic.echo", "version": "0.1.0" },
+  "inputs": { "message": "Hello from the template Atomic Executor" }
+}
+
