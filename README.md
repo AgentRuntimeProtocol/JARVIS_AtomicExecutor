@@ -1,17 +1,15 @@
-# ARP Template Atomic Executor
+# JARVIS Atomic Executor
 
-Use this repo as a starting point for building an **ARP compliant Atomic Executor** service.
+First-party OSS reference implementation of the ARP `spec/v1` Atomic Executor.
 
-This minimal template implements the Atomic Executor API using only the SDK packages:
+This JARVIS component implements the Atomic Executor API using the SDK packages:
 `arp-standard-server`, `arp-standard-model`, and `arp-standard-client`.
-
-It is intentionally small and readable so you can replace the handler logic with your own domain capabilities while keeping the same API surface.
 
 Implements: ARP Standard `spec/v1` Atomic Executor API (contract: `ARP_Standard/spec/v1/openapi/atomic-executor.openapi.yaml`).
 
 ## Requirements
 
-- Python >= 3.10
+- Python >= 3.11
 
 ## Install
 
@@ -21,7 +19,7 @@ python3 -m pip install -e .
 
 ## Local configuration (optional)
 
-For local dev convenience, copy the template env file:
+For local dev convenience, copy the example env file:
 
 ```bash
 cp .env.example .env.local
@@ -34,8 +32,8 @@ cp .env.example .env.local
 - Atomic Executor listens on `http://127.0.0.1:8082` by default.
 
 ```bash
-python3 -m pip install -e '.[run]'
-python3 -m arp_template_atomic_executor
+python3 -m pip install -e .
+jarvis-atomic-executor
 ```
 
 > [!TIP]
@@ -43,16 +41,36 @@ python3 -m arp_template_atomic_executor
 
 ## Using this repo
 
-To build your own executor, fork this repository and replace/add handlers while preserving request/response semantics.
+This repo is the maintained JARVIS reference for atomic execution. Add or replace handlers while preserving ARP request/response semantics.
 
-If all you need is to change what atomic node types do, edit:
-- `src/arp_template_atomic_executor/executor.py`
+This executor auto-loads **installed node packs** via the `jarvis.nodepacks` entry point group (see `arp-jarvis-atomic-nodes`).
+If you want to override the default handler registry, pass `handlers=...` when constructing `AtomicExecutor`.
 
 ### Default behavior
 
-- Implements a single deterministic handler: `atomic.echo`.
-- `execute_atomic_node_run` returns `succeeded` with `outputs={"echo": inputs}` for `atomic.echo`.
+- Loads handlers from installed node packs (entry points).
+- Includes `jarvis.core.echo` from the core pack.
+- `execute_atomic_node_run` returns `succeeded` with `outputs={"echo": inputs}` for the echo node.
 - Unknown `node_type_id` returns `failed` with an error payload.
+- `cancel_atomic_node_run` cancels in-flight handler execution (best-effort).
+
+### Common extensions
+
+- Add more node packs or override the handler registry explicitly.
+- Customize cancellation behavior (cooperative cancellation, idempotency, timeouts).
+- Configure timeouts/concurrency controls around handler execution.
+
+## Implementation overview
+
+Request flow:
+1) Inbound request hits the Atomic Executor (`arp-standard-server`).
+2) Auth middleware validates the `Authorization: Bearer <JWT>` header (when enabled).
+3) The executor routes by `node_type_ref.node_type_id` and calls the matching handler.
+4) The executor returns `AtomicExecuteResult` with outputs and timing metadata.
+
+System-of-record:
+- The Atomic Executor does not store run state or emit durable run events.
+- The Run Coordinator is responsible for orchestration, durability, and emitting `atomic_executed`.
 
 ## Quick health check
 
@@ -66,6 +84,12 @@ CLI flags:
 - `--host` (default `127.0.0.1`)
 - `--port` (default `8082`)
 - `--reload` (dev only)
+
+Environment variables:
+- Incoming JWT validation is configured via `ARP_AUTH_PROFILE` and `ARP_AUTH_*` overrides (see `.env.example`).
+- Optional execution controls:
+  - `JARVIS_DEFAULT_TIMEOUT_SECS` (coarse per-request timeout)
+  - `JARVIS_MAX_CONCURRENCY` (cap concurrent executions)
 
 ## Validate conformance (`arp-conformance`)
 
@@ -84,13 +108,27 @@ arp-conformance check atomic-executor --url http://127.0.0.1:8082 --tier surface
   python3 src/scripts/send_request.py --request src/scripts/request.json
   ```
 
+  Note: this helper does not include an `Authorization` header. For a quick local run, set `ARP_AUTH_PROFILE=dev-insecure` (dev only), or call the Atomic Executor via the Run Coordinator (recommended).
+
 ## Authentication
 
-For out-of-the-box usability, this template defaults to auth-disabled unless you set `ARP_AUTH_MODE` or `ARP_AUTH_PROFILE`.
+This service validates incoming JWTs (authn). It does not perform token exchange.
 
-To enable JWT auth, set either:
-- `ARP_AUTH_PROFILE=dev-secure-keycloak` + `ARP_AUTH_SERVICE_ID=<audience>`
-- or `ARP_AUTH_MODE=required` with `ARP_AUTH_ISSUER` and `ARP_AUTH_AUDIENCE`
+Auth is enabled by default (JWT). To disable for local dev, set `ARP_AUTH_PROFILE=dev-insecure`.
+If no `ARP_AUTH_*` env vars are set, the service defaults to required JWT auth with the dev Keycloak issuer.
+
+To enable local Keycloak defaults, set:
+- `ARP_AUTH_PROFILE=dev-secure-keycloak`
+- `ARP_AUTH_AUDIENCE=arp-atomic-executor`
+- `ARP_AUTH_ISSUER=http://localhost:8080/realms/arp-dev`
+
+### Coordinator → Atomic Executor calls
+
+In the JARVIS stack, the Run Coordinator is expected to:
+- mint/exchange a service-scoped JWT for the Atomic Executor audience via STS (OIDC/RFC 8693)
+- call `POST /v1/atomic-node-runs:execute` with `Authorization: Bearer <token>`
+
+The Atomic Executor validates the JWT (signature + optional `iss`/`aud`) and executes the handler.
 
 ## Upgrading
 
