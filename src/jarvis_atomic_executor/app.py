@@ -12,8 +12,8 @@ def create_app():
     auth_settings = auth_settings_from_env_or_dev_secure()
     logger.info(
         "Atomic Executor auth settings (mode=%s, issuer=%s)",
-        auth_settings.mode,
-        auth_settings.issuer,
+        getattr(auth_settings, "mode", None),
+        getattr(auth_settings, "issuer", None),
     )
     return AtomicExecutor().create_app(
         title="JARVIS Atomic Executor",
