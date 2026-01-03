@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import logging
+
 from .executor import AtomicExecutor
 from .utils import auth_settings_from_env_or_dev_secure
 
+logger = logging.getLogger(__name__)
+
 
 def create_app():
+    auth_settings = auth_settings_from_env_or_dev_secure()
+    logger.info(
+        "Atomic Executor auth settings (mode=%s, issuer=%s)",
+        auth_settings.mode,
+        auth_settings.issuer,
+    )
     return AtomicExecutor().create_app(
         title="JARVIS Atomic Executor",
-        auth_settings=auth_settings_from_env_or_dev_secure(),
+        auth_settings=auth_settings,
     )
 
 

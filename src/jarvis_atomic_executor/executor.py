@@ -76,12 +76,19 @@ class AtomicExecutor(BaseAtomicExecutorServer):
         self._default_timeout_seconds = default_timeout_seconds
         if self._default_timeout_seconds is None:
             self._default_timeout_seconds = _env_float("JARVIS_DEFAULT_TIMEOUT_SECS")
+        max_concurrency_value = max_concurrency or _env_int("JARVIS_MAX_CONCURRENCY")
         self._semaphore: asyncio.Semaphore | None = None
-        if (cap := (max_concurrency or _env_int("JARVIS_MAX_CONCURRENCY"))) is not None and cap > 0:
-            self._semaphore = asyncio.Semaphore(cap)
+        if max_concurrency_value is not None and max_concurrency_value > 0:
+            self._semaphore = asyncio.Semaphore(max_concurrency_value)
 
         # In-flight task registry, used to implement best-effort cancellation.
         self._tasks: dict[str, asyncio.Task[dict[str, object]]] = {}
+        logger.info(
+            "Atomic Executor ready (handlers=%s, default_timeout=%s, max_concurrency=%s)",
+            len(self._handlers),
+            self._default_timeout_seconds,
+            max_concurrency_value,
+        )
 
     # Core methods - Atomic Executor API implementations
     async def health(self, request: AtomicExecutorHealthRequest) -> Health:
@@ -126,7 +133,18 @@ class AtomicExecutor(BaseAtomicExecutorServer):
 
         # Resolve the requested node type to an in-process handler.
         node_type_id = request.body.node_type_ref.node_type_id
+        logger.info(
+            "Atomic execute requested (run_id=%s, node_run_id=%s, node_type_id=%s)",
+            request.body.run_id,
+            node_run_id,
+            node_type_id,
+        )
         if (handler := self._handlers.get(node_type_id)) is None:
+            logger.warning(
+                "Atomic execute failed (node_run_id=%s, node_type_id=%s, reason=unknown_node_type)",
+                node_run_id,
+                node_type_id,
+            )
             return AtomicExecuteResult(
                 node_run_id=node_run_id,
                 state=NodeRunState.failed,
@@ -162,6 +180,7 @@ class AtomicExecutor(BaseAtomicExecutorServer):
                 outputs = await asyncio.wait_for(task, timeout=timeout)
             else:
                 outputs = await task
+            logger.info("Atomic execute succeeded (node_run_id=%s)", node_run_id)
             return AtomicExecuteResult(
                 node_run_id=node_run_id,
                 state=NodeRunState.succeeded,
@@ -176,6 +195,7 @@ class AtomicExecutor(BaseAtomicExecutorServer):
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
+            logger.warning("Atomic execute timed out (node_run_id=%s)", node_run_id)
             return AtomicExecuteResult(
                 node_run_id=node_run_id,
                 state=NodeRunState.failed,
@@ -187,6 +207,7 @@ class AtomicExecutor(BaseAtomicExecutorServer):
             )
         except asyncio.CancelledError:
             # Cancellation can happen via the cancel endpoint or server shutdown.
+            logger.warning("Atomic execute canceled (node_run_id=%s)", node_run_id)
             return AtomicExecuteResult(
                 node_run_id=node_run_id,
                 state=NodeRunState.canceled,
@@ -226,6 +247,7 @@ class AtomicExecutor(BaseAtomicExecutorServer):
         node_run_id = request.params.node_run_id
         if (task := self._tasks.get(node_run_id)) is not None:
             task.cancel()
+            logger.info("Atomic execute cancellation requested (node_run_id=%s)", node_run_id)
         return None
 
     async def _handle_echo(self, request: AtomicExecuteRequest) -> dict[str, object]:
