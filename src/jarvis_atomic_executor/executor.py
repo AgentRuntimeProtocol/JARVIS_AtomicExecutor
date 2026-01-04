@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable, Coroutine, Mapping
 from contextlib import suppress
 import logging
@@ -252,7 +253,10 @@ class AtomicExecutor(BaseAtomicExecutorServer):
 
     async def _handle_echo(self, request: AtomicExecuteRequest) -> dict[str, object]:
         # Deterministic baseline handler used for smoke tests and conformance.
-        return {"echo": request.inputs}
+        value = request.inputs.get("echo")
+        if isinstance(value, str):
+            return {"echo": value}
+        return {"echo": json.dumps(request.inputs, sort_keys=True)}
 
 
 def _env_int(name: str) -> int | None:

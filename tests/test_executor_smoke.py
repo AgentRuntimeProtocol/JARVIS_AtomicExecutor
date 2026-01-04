@@ -18,14 +18,14 @@ def test_execute_atomic_echo() -> None:
             node_run_id="node_run_1",
             run_id="run_1",
             node_type_ref=NodeTypeRef(node_type_id="jarvis.core.echo", version="0.3.7"),
-            inputs={"ping": "pong"},
+            inputs={"echo": "pong"},
         )
     )
 
     result = asyncio.run(executor.execute_atomic_node_run(request))
 
     assert result.state == NodeRunState.succeeded
-    assert result.outputs == {"echo": {"ping": "pong"}}
+    assert result.outputs == {"echo": "pong"}
 
 
 def test_execute_atomic_unknown_node_type() -> None:
