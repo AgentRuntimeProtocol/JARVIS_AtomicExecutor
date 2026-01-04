@@ -1,6 +1,6 @@
 {
   "node_run_id": "node_run_demo",
   "run_id": "run_demo",
-  "node_type_ref": { "node_type_id": "jarvis.core.echo", "version": "0.3.7" },
+  "node_type_ref": { "node_type_id": "jarvis.core.echo", "version": "0.3.8" },
   "inputs": { "message": "Hello from JARVIS Atomic Executor" }
 }

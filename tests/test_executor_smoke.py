@@ -17,7 +17,7 @@ def test_execute_atomic_echo() -> None:
         body=AtomicExecuteRequest(
             node_run_id="node_run_1",
             run_id="run_1",
-            node_type_ref=NodeTypeRef(node_type_id="jarvis.core.echo", version="0.3.7"),
+            node_type_ref=NodeTypeRef(node_type_id="jarvis.core.echo", version="0.3.8"),
             inputs={"echo": "pong"},
         )
     )
